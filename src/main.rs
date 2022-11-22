@@ -1,6 +1,5 @@
 use std::{
     io::{stdin, Read},
-    path::PathBuf,
 };
 
 use image::{io::Reader, Rgb};
@@ -251,11 +250,15 @@ fn main() {
             );
             for color in color_palette {
                 all_content += &format!(
-                    "0x{:04x}, ",
-                    match color {
-                        Some(c) => c,
+                    "0x{:02x}, 0x{:02x}, ",
+					match color {
+                        Some(c) => c >> 8,
                         None => 0,
-                    }
+                    },
+                    match color {
+                        Some(c) => c & 0xFF,
+                        None => 0,
+                    },
                 );
             }
             all_content.pop();
