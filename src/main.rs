@@ -1,6 +1,4 @@
-use std::{
-    io::{stdin, Read},
-};
+use std::io::{stdin, Read};
 
 use image::{io::Reader, Rgb};
 use rfd::FileDialog;
@@ -58,20 +56,20 @@ fn get_palette_index(color_palette: &mut [Option<u16>; 8], pixel_color: u16) -> 
 
 fn main() {
     let Some(files) = FileDialog::new()
-    	.add_filter("images", &["png", "bmp", "gif"])
-    	.set_title("Select images to convert")
-    	.pick_files() else { panic!("No file selected.") };
+		.add_filter("images", &["png", "bmp", "gif"])
+		.set_title("Select images to convert")
+		.pick_files() else { panic!("No file selected.") };
 
     let Some(output) = FileDialog::new()
 		.add_filter("optimised", &["opt"])
-    	.add_filter("basic", &["bsc"])
-    	.set_title("Select a save location")
-    	.save_file() else { panic!("No save location selected.") };
+		.add_filter("basic", &["bsc"])
+		.set_title("Select a save location")
+		.save_file() else { panic!("No save location selected.") };
 
-    // let files = vec![PathBuf::from(
-    //     "\\\\wsl.localhost\\Ubuntu-20.04\\home\\jaschutte\\School\\croaker\\images\\tile.bmp",
+    // let files = vec![std::path::PathBuf::from(
+    //     "\\\\wsl.localhost\\Ubuntu-20.04\\home\\jaschutte\\School\\croaker\\images\\frogge.bmp",
     // )];
-    // let output = PathBuf::from(
+    // let output = std::path::PathBuf::from(
     //     "\\\\wsl.localhost\\Ubuntu-20.04\\home\\jaschutte\\School\\croaker\\images\\output.opt",
     // );
 
@@ -137,29 +135,28 @@ fn main() {
             let mut color_palette: [Option<u16>; OPT_MAX_COLORS] = [None; OPT_MAX_COLORS];
             let mut window = [IMPOSSIBLE_INDEX; WINDOW_SIZE]; // We init at 8, an impossible index to search as we only allow 8 colors
             let mut matching_pixels = 1;
+            let mut pixel_idx = -4;
             let mut pixel_converter = |pixel| {
+                pixel_idx += 1;
                 // Not worth writing a loop for
                 window[0] = window[1];
                 window[1] = window[2];
                 window[2] = window[3];
                 window[3] = pixel;
 
+                // println!("#{:?} {}", &window, matching_pixels);
                 if window[0] == window[1] {
                     matching_pixels += 1;
-                    if matching_pixels >= 15 {
-                        let real_matching_count = 15;
-                        matching_pixels = 0;
+                    if matching_pixels == 15 {
                         // RANGE BYTE
                         // [ RESV | RAN1 | RAN2 | RAN3 | RAN4 | COL1 | COL2 | COL3 ]
                         let char = RANGE_SIG_BIT
-                            + (real_matching_count << RANGE_RANGE_OFFSET)
+                            + (matching_pixels << RANGE_RANGE_OFFSET)
                             + (window[0] << RANGE_COL_OFFSET);
-                        window[0] = IMPOSSIBLE_INDEX;
+                        matching_pixels = 0;
                         Some(char)
-                    } else if matching_pixels <= 4
-                        && (window[0] != window[2] || window[0] != window[3])
-                        && window[0] != IMPOSSIBLE_INDEX
-                        && window[1] != IMPOSSIBLE_INDEX
+                    } else if (matching_pixels == 2 || matching_pixels == 1)
+                        && window[1] != window[2]
                     {
                         // COLOR BYTE
                         // [ RESV | COL1 | COL2 | COL3 | COPY | COL1 | COL2 | COL3 ]
@@ -167,14 +164,17 @@ fn main() {
                             + (window[0] << COLOR_FIRST_COL_OFFSET)
                             + (window[1] << COLOR_SECOND_COL_OFFSET);
                         window[0] = IMPOSSIBLE_INDEX;
-                        window[1] = IMPOSSIBLE_INDEX;
+                        if matching_pixels == 1 {
+                            window[1] = IMPOSSIBLE_INDEX;
+                        }
+                        matching_pixels = 1;
                         Some(char)
                     } else {
                         None
                     }
                 } else {
-                    let real_matching_count = matching_pixels;
-                    matching_pixels = 1;
+                    let real_matching_count = matching_pixels + 1;
+                    matching_pixels = 0;
 
                     if real_matching_count >= 5 {
                         // RANGE BYTE
@@ -191,17 +191,31 @@ fn main() {
                             + (window[0] << COLOR_FIRST_COL_OFFSET)
                             + COPY_BIT
                             + (window[1] << COLOR_SECOND_COL_OFFSET);
-                        window = [IMPOSSIBLE_INDEX; WINDOW_SIZE];
+                        window[0] = IMPOSSIBLE_INDEX;
+                        // window = [IMPOSSIBLE_INDEX; WINDOW_SIZE];
                         Some(char)
                     } else if window[0] != IMPOSSIBLE_INDEX {
-                        // COLOR BYTE
-                        // [ RESV | COL1 | COL2 | COL3 | COPY | COL1 | COL2 | COL3 ]
-                        let char = COLOR_SIG_BIT
-                            + (window[0] << COLOR_FIRST_COL_OFFSET)
-                            + (window[1] << COLOR_SECOND_COL_OFFSET);
-                        window[0] = IMPOSSIBLE_INDEX;
-                        window[1] = IMPOSSIBLE_INDEX;
-                        Some(char)
+                        if real_matching_count == 4 {
+                            // COLOR BYTE
+                            // [ RESV | COL1 | COL2 | COL3 | COPY | COL1 | COL2 | COL3 ]
+                            let char = COLOR_SIG_BIT
+                                + (window[0] << COLOR_FIRST_COL_OFFSET)
+                                + COPY_BIT
+                                + (window[0] << COLOR_SECOND_COL_OFFSET);
+                            window[0] = IMPOSSIBLE_INDEX;
+                            // window[1] = IMPOSSIBLE_INDEX;
+                            // window = [IMPOSSIBLE_INDEX; WINDOW_SIZE];
+                            Some(char)
+                        } else {
+                            // COLOR BYTE
+                            // [ RESV | COL1 | COL2 | COL3 | COPY | COL1 | COL2 | COL3 ]
+                            let char = COLOR_SIG_BIT
+                                + (window[0] << COLOR_FIRST_COL_OFFSET)
+                                + (window[1] << COLOR_SECOND_COL_OFFSET);
+                            window[0] = IMPOSSIBLE_INDEX;
+                            window[1] = IMPOSSIBLE_INDEX;
+                            Some(char)
+                        }
                     } else {
                         None
                     }
@@ -227,31 +241,37 @@ fn main() {
             };
 
             // Function programming power ftw!
-            let mut image_data = rgb
+            let image_data = rgb
                 .enumerate_pixels()
                 .map(get_color_palette)
+                .chain([IMPOSSIBLE_INDEX; 4])
                 .filter_map(&mut pixel_converter)
                 .collect::<Vec<u8>>();
 
             // Make sure we empty the entire buffer
-            for pixel in [IMPOSSIBLE_INDEX; 4] {
-                if let Some(char) = &mut pixel_converter(pixel) {
-                    image_data.push(*char);
-                }
-            }
+            // for pixel in [IMPOSSIBLE_INDEX; 4] {
+            //     if let Some(char) = &mut pixel_converter(pixel) {
+            //         image_data.push(*char);
+            //     }
+            // }
 
             // Convert the image data into a C array
             let (w, h) = rgb.dimensions();
             all_content += &format!("// Image dimensions: {}, {}\n", w, h);
             all_content += &format!(
-                "PROGMEM const char {name}[{len}] = {{\n\t",
-                len = image_data.len() + 16,
+                "#define {}_SIZE {}\n",
+                file_stem.to_uppercase(),
+                image_data.len() + 16
+            );
+            all_content += &format!(
+                "PROGMEM const char {name}[{upper}_SIZE] = {{\n\t",
+                upper = file_stem.to_uppercase(),
                 name = file_stem
             );
             for color in color_palette {
                 all_content += &format!(
                     "0x{:02x}, 0x{:02x}, ",
-					match color {
+                    match color {
                         Some(c) => c >> 8,
                         None => 0,
                     },
@@ -262,33 +282,16 @@ fn main() {
                 );
             }
             all_content.pop();
-			all_content += "\n\t";
-            for encoded_pixel in image_data {
-                all_content += &format!("0x{:02x}, ", encoded_pixel);
+            all_content += "\n\t";
+            for encoded_pixel in &image_data {
+                all_content += &format!("0x{:02x}, ", *encoded_pixel);
             }
             all_content.pop();
             all_content.pop();
             all_content += "\n};\n";
 
             // VERBOSE OUTPUT
-            // for u in image_data {
-            //     if u & (1 << 7) == (1 << 7) {
-            //         println!(
-            //             "R({})\t   COLOR={} ({:#b})",
-            //             (u & (0b1111 << RANGE_RANGE_OFFSET)) >> RANGE_RANGE_OFFSET,
-            //             (u & (0b111 << RANGE_COL_OFFSET)) >> RANGE_COL_OFFSET,
-            //             u
-            //         )
-            //     } else {
-            //         println!(
-            //             "C({}) COL1={} COL2={} ({:#b})",
-            //             (u & (1 << 3)) >> 3,
-            //             (u & (0b111 << COLOR_FIRST_COL_OFFSET)) >> COLOR_FIRST_COL_OFFSET,
-            //             (u & (0b111 << COLOR_SECOND_COL_OFFSET)) >> COLOR_SECOND_COL_OFFSET,
-            //             u
-            //         )
-            //     }
-            // }
+            // fora
         }
     }
 
