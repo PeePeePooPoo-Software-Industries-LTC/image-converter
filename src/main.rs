@@ -257,16 +257,23 @@ fn main() {
 
             // Convert the image data into a C array
             let (w, h) = rgb.dimensions();
-            all_content += &format!("// Image dimensions: {}, {}\n", w, h);
+			let image_len = image_data.len() + 16;
+            all_content += &format!("// AUTO GENERATED IMAGE, PUT ME IN images.cpp\n");
             all_content += &format!(
-                "#define {}_SIZE {}\n",
-                file_stem.to_uppercase(),
-                image_data.len() + 16
+"RawImage image_{file_stem} {{
+	GET_IMAGE({file_stem}),
+	{image_len},
+	Vector2 {{ {w}, {h} }}
+}};
+",
+			);
+			all_content += "// AUTO GENERATED IMAGE, PUT ME IN images.h\n";
+			all_content += &format!(
+                "extern RawImage image_{};\n",
+                file_stem,
             );
             all_content += &format!(
-                "PROGMEM const char {name}[{upper}_SIZE] = {{\n\t",
-                upper = file_stem.to_uppercase(),
-                name = file_stem
+                "PROGMEM const char __raw_{file_stem}_p[{image_len}] = {{\n\t",
             );
             for color in color_palette {
                 all_content += &format!(
