@@ -36,6 +36,18 @@ macro_rules! rgb_to_565 {
     };
 }
 
+#[derive(Clone, Copy)]
+struct PixelRange {
+	range: u8,
+	color: u8
+}
+
+impl PixelRange {
+	fn empty() -> Self {
+		PixelRange { range: 0, color: 0 }
+	}
+}
+
 fn get_palette_index(color_palette: &mut [Option<u16>; 8], pixel_color: u16) -> Option<usize> {
     for (idx, palette_color) in color_palette.iter_mut().enumerate() {
         match palette_color {
@@ -56,21 +68,21 @@ fn get_palette_index(color_palette: &mut [Option<u16>; 8], pixel_color: u16) -> 
 
 fn main() {
     let Some(files) = FileDialog::new()
-		.add_filter("images", &["png", "bmp", "gif"])
-		.set_title("Select images to convert")
-		.pick_files() else { panic!("No file selected.") };
+    	.add_filter("images", &["png", "bmp", "gif"])
+    	.set_title("Select images to convert")
+    	.pick_files() else { panic!("No file selected.") };
 
     let Some(output) = FileDialog::new()
-		.add_filter("optimised", &["opt"])
-		.add_filter("basic", &["bsc"])
-		.set_title("Select a save location")
-		.save_file() else { panic!("No save location selected.") };
+    	.add_filter("optimised", &["opt"])
+    	.add_filter("basic", &["bsc"])
+    	.set_title("Select a save location")
+    	.save_file() else { panic!("No save location selected.") };
 
     // let files = vec![std::path::PathBuf::from(
-    //     "\\\\wsl.localhost\\Ubuntu-20.04\\home\\jaschutte\\School\\croaker\\images\\frogge.bmp",
+    //     "\\\\wsl.localhost\\Ubuntu-20.04\\home\\jaschutte\\School\\croaker\\images\\font\\font_w.png",
     // )];
     // let output = std::path::PathBuf::from(
-    //     "\\\\wsl.localhost\\Ubuntu-20.04\\home\\jaschutte\\School\\croaker\\images\\output.opt",
+    //     "\\\\wsl.localhost\\Ubuntu-20.04\\home\\jaschutte\\School\\croaker\\images\\font\\font.opt",
     // );
 
     let opt_mode = match output.extension() {
@@ -89,6 +101,7 @@ fn main() {
     };
 
     let mut all_content = String::new();
+    let mut all_content_cpp = String::new();
     for file in files {
         // That's gotta be the worst rust code I've ever seen
         // So it would seem
@@ -133,93 +146,81 @@ fn main() {
         } else {
             const WINDOW_SIZE: usize = 4;
             let mut color_palette: [Option<u16>; OPT_MAX_COLORS] = [None; OPT_MAX_COLORS];
-            let mut window = [IMPOSSIBLE_INDEX; WINDOW_SIZE]; // We init at 8, an impossible index to search as we only allow 8 colors
+
+            let mut prev_pixel = IMPOSSIBLE_INDEX;
             let mut matching_pixels = 1;
-            let mut pixel_idx = -4;
             let mut pixel_converter = |pixel| {
-                pixel_idx += 1;
-                // Not worth writing a loop for
+                // Count the pixels in a row, starting from 1 (the current pixel)
+                let different = prev_pixel != pixel;
+
+                let return_val =
+                    if (different || matching_pixels == 15) && prev_pixel != IMPOSSIBLE_INDEX {
+                        Some(PixelRange {
+							range: matching_pixels,
+							color: prev_pixel
+						})
+                    } else {
+                        None
+                    };
+
+                matching_pixels = if different || matching_pixels == 15 {
+                    1
+                } else {
+                    matching_pixels + 1
+                };
+
+                prev_pixel = pixel;
+                return_val
+            };
+
+            // Compact some bytes into color bytes
+            let mut window = [PixelRange::empty(); WINDOW_SIZE];
+            let mut pixel_compactor = |range_byte| {
+                // We look FORWARDS not BACKWARDS
                 window[0] = window[1];
                 window[1] = window[2];
                 window[2] = window[3];
-                window[3] = pixel;
+                window[3] = range_byte;
 
-                // println!("#{:?} {}", &window, matching_pixels);
-                if window[0] == window[1] {
-                    matching_pixels += 1;
-                    if matching_pixels == 15 {
-                        // RANGE BYTE
-                        // [ RESV | RAN1 | RAN2 | RAN3 | RAN4 | COL1 | COL2 | COL3 ]
-                        let char = RANGE_SIG_BIT
-                            + (matching_pixels << RANGE_RANGE_OFFSET)
-                            + (window[0] << RANGE_COL_OFFSET);
-                        matching_pixels = 0;
-                        Some(char)
-                    } else if (matching_pixels == 2 || matching_pixels == 1)
-                        && window[1] != window[2]
-                    {
-                        // COLOR BYTE
-                        // [ RESV | COL1 | COL2 | COL3 | COPY | COL1 | COL2 | COL3 ]
-                        let char = COLOR_SIG_BIT
-                            + (window[0] << COLOR_FIRST_COL_OFFSET)
-                            + (window[1] << COLOR_SECOND_COL_OFFSET);
-                        window[0] = IMPOSSIBLE_INDEX;
-                        if matching_pixels == 1 {
-                            window[1] = IMPOSSIBLE_INDEX;
-                        }
-                        matching_pixels = 1;
-                        Some(char)
-                    } else {
-                        None
-                    }
-                } else {
-                    let real_matching_count = matching_pixels + 1;
-                    matching_pixels = 0;
+				// Check for an xoxo pattern
+				if window[0].range == 1
+					&& window[1].range == 1
+					&& window[2].range == 1
+					&& window[3].range == 1
 
-                    if real_matching_count >= 5 {
-                        // RANGE BYTE
-                        // [ RESV | RAN1 | RAN2 | RAN3 | RAN4 | COL1 | COL2 | COL3 ]
-                        let char = RANGE_SIG_BIT
-                            + (real_matching_count << RANGE_RANGE_OFFSET)
-                            + (window[0] << RANGE_COL_OFFSET);
-                        window[0] = IMPOSSIBLE_INDEX;
-                        Some(char)
-                    } else if window[0] == window[2] && window[1] == window[3] {
-                        // COLOR BYTE
-                        // [ RESV | COL1 | COL2 | COL3 | COPY | COL1 | COL2 | COL3 ]
-                        let char = COLOR_SIG_BIT
-                            + (window[0] << COLOR_FIRST_COL_OFFSET)
-                            + COPY_BIT
-                            + (window[1] << COLOR_SECOND_COL_OFFSET);
-                        window[0] = IMPOSSIBLE_INDEX;
-                        // window = [IMPOSSIBLE_INDEX; WINDOW_SIZE];
-                        Some(char)
-                    } else if window[0] != IMPOSSIBLE_INDEX {
-                        if real_matching_count == 4 {
-                            // COLOR BYTE
-                            // [ RESV | COL1 | COL2 | COL3 | COPY | COL1 | COL2 | COL3 ]
-                            let char = COLOR_SIG_BIT
-                                + (window[0] << COLOR_FIRST_COL_OFFSET)
-                                + COPY_BIT
-                                + (window[0] << COLOR_SECOND_COL_OFFSET);
-                            window[0] = IMPOSSIBLE_INDEX;
-                            // window[1] = IMPOSSIBLE_INDEX;
-                            // window = [IMPOSSIBLE_INDEX; WINDOW_SIZE];
-                            Some(char)
-                        } else {
-                            // COLOR BYTE
-                            // [ RESV | COL1 | COL2 | COL3 | COPY | COL1 | COL2 | COL3 ]
-                            let char = COLOR_SIG_BIT
-                                + (window[0] << COLOR_FIRST_COL_OFFSET)
-                                + (window[1] << COLOR_SECOND_COL_OFFSET);
-                            window[0] = IMPOSSIBLE_INDEX;
-                            window[1] = IMPOSSIBLE_INDEX;
-                            Some(char)
-                        }
-                    } else {
-                        None
-                    }
-                }
+					&& window[0].color == window[2].color
+					&& window[1].color == window[3].color
+				{
+					let color0 = window[0].color;
+					let color1 = window[1].color;
+					window = [PixelRange::empty(); WINDOW_SIZE];
+					Some([
+						COLOR_SIG_BIT
+                            + (color0 << COLOR_FIRST_COL_OFFSET)
+							+ COPY_BIT
+                            + (color1 << COLOR_SECOND_COL_OFFSET)
+					])
+				// Handle inefficient range(1) bytes
+				} else if window[0].range == 1 && window[1].range >= 1 {
+					let color0 = window[0].color;
+					let color1 = window[1].color;
+					// Since we draw the next pixel, remove one from it's counter
+					window[1].range -= 1;
+					Some([
+						COLOR_SIG_BIT
+                            + (color0 << COLOR_FIRST_COL_OFFSET)
+                            + (color1 << COLOR_SECOND_COL_OFFSET)
+					])
+				// Copy paste efficient range(x) bytes
+				} else if window[0].range != 0 {
+					Some([
+						RANGE_SIG_BIT
+                            + (window[0].range << RANGE_RANGE_OFFSET)
+                            + (window[0].color << RANGE_COL_OFFSET)
+					])
+				} else {
+					None
+				}
             };
 
             // Get a color palette from the raw image
@@ -244,8 +245,13 @@ fn main() {
             let image_data = rgb
                 .enumerate_pixels()
                 .map(get_color_palette)
-                .chain([IMPOSSIBLE_INDEX; 4])
+				// Make sure we have enough to for the last pixel to also get the prev_pixel
+                .chain([IMPOSSIBLE_INDEX; 1])
                 .filter_map(&mut pixel_converter)
+				// Since the buffer needs to look into the future, we append 4 to the end
+				.chain([PixelRange::empty(); 4])
+                .filter_map(&mut pixel_compactor)
+                .flatten()
                 .collect::<Vec<u8>>();
 
             // Make sure we empty the entire buffer
@@ -257,24 +263,20 @@ fn main() {
 
             // Convert the image data into a C array
             let (w, h) = rgb.dimensions();
-			let image_len = image_data.len() + 16;
-            all_content += &format!("// AUTO GENERATED IMAGE, PUT ME IN images.cpp\n");
-            all_content += &format!(
-"RawImage image_{file_stem} {{
+            let image_len = image_data.len() + 16;
+            all_content_cpp += &format!(
+                "// AUTO GENERATED IMAGE, PUT ME IN images.cpp
+RawImage image_{file_stem} {{
 	GET_IMAGE({file_stem}),
 	{image_len},
 	Vector2 {{ {w}, {h} }}
 }};
 ",
-			);
-			all_content += "// AUTO GENERATED IMAGE, PUT ME IN images.h\n";
-			all_content += &format!(
-                "extern RawImage image_{};\n",
-                file_stem,
             );
-            all_content += &format!(
-                "PROGMEM const char __raw_{file_stem}_p[{image_len}] = {{\n\t",
-            );
+            all_content += "// AUTO GENERATED IMAGE, PUT ME IN images.h\n";
+            all_content += &format!("extern RawImage image_{};\n", file_stem,);
+            all_content +=
+                &format!("PROGMEM const char __raw_{file_stem}_p[{image_len}] = {{\n\t",);
             for color in color_palette {
                 all_content += &format!(
                     "0x{:02x}, 0x{:02x}, ",
@@ -297,10 +299,36 @@ fn main() {
             all_content.pop();
             all_content += "\n};\n";
 
-            // VERBOSE OUTPUT
-            // fora
+            // // VERBOSE OUTPUT
+            // let mut index = 0;
+            // for u in image_data {
+            //     if u & (1 << 7) == (1 << 7) {
+            //         let range = (u & (0b1111 << RANGE_RANGE_OFFSET)) >> RANGE_RANGE_OFFSET;
+            //         println!(
+            //             "R({})\t   COLOR={} pix({:2}, {:2}) ({:#b})",
+            //             range,
+            //             (u & (0b111 << RANGE_COL_OFFSET)) >> RANGE_COL_OFFSET,
+            //             index % w,
+            //             index / w,
+            //             u,
+            //         );
+            //         index += range as u32;
+            //     } else {
+            //         println!(
+            //             "C({}) COL1={} COL2={} pix({:2}, {:2}) ({:#b})",
+            //             (u & (1 << 3)) >> 3,
+            //             (u & (0b111 << COLOR_FIRST_COL_OFFSET)) >> COLOR_FIRST_COL_OFFSET,
+            //             (u & (0b111 << COLOR_SECOND_COL_OFFSET)) >> COLOR_SECOND_COL_OFFSET,
+            //             index % w,
+            //             index / w,
+            //             u,
+            //         );
+            //         index += if (u & (1 << 3)) >> 3 == 0 { 2 } else { 4 };
+            //     }
+            // }
         }
     }
+    all_content += all_content_cpp.as_str();
 
     match std::fs::write(&output, &all_content) {
         Ok(_) => {
