@@ -186,6 +186,7 @@ fn main() {
         // Convert the image data into a C array
         let (w, h) = rgb.dimensions();
         let image_len = image_data.len();
+        all_content += &format!("#define IMAGE_{file_stem}_MAX_BYTES = {image_len};\r\n");
         all_content += &format!("unsigned char image_{file_stem}_width = {w};\r\n");
         all_content += &format!("unsigned char image_{file_stem}_height = {h};\r\n");
         let palette_series = color_palette.into_iter().fold(String::new(), |str, color| {
@@ -195,7 +196,7 @@ fn main() {
             }
         });
         all_content += &format!("unsigned int image_{file_stem}_palette[8] = {{\r\n\t{palette_series}\r\n}};\r\n");
-        all_content += &format!("unsigned char image_{file_stem}[{image_len}] = {{\r\n\t");
+        all_content += &format!("unsigned char image_{file_stem}[IMAGE_{file_stem}_MAX_BYTES] = {{\r\n\t");
         let byte_series = image_data.into_iter().enumerate().fold(String::new(), |mut str, (index, byte)| {
             str += &format!(
                 "0x{:02x},{}",
