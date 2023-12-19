@@ -76,7 +76,7 @@ fn main() {
         let Ok(raw_reader) = Reader::open(&file) else { panic!("Invalid file") };
         let Ok(file_reader) = raw_reader.with_guessed_format() else { panic!("Invalid file format") };
         let Ok(decoded) = file_reader.decode() else { panic!("Invalid file format") };
-        let Some(rgb) = decoded.as_rgb8() else { panic!("Invalid color codec") };
+        let rgb = decoded.into_rgb8();
 
         // Basic note
         all_content += &format!("\n// AUTO-GENERATED IMAGE CONVERTED FROM: {}\n", file_name);
