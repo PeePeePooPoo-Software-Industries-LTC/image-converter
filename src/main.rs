@@ -189,7 +189,7 @@ fn main() {
 
         // Header note
         h_file_content += &format!("\n// AUTO-GENERATED IMAGE CONVERTED FROM: {}\n", file_name);
-        h_file_content += &format!("#define IMAGE_{file_stem}_MAX_BYTES = {image_len};\r\n");
+        h_file_content += &format!("#define IMAGE_{file_stem}_MAX_BYTES {image_len}\r\n");
         h_file_content += &format!("extern unsigned char image_{file_stem}_width;\r\n");
         h_file_content += &format!("extern unsigned char image_{file_stem}_height;\r\n");
         h_file_content += &format!("extern unsigned int image_{file_stem}_palette[8];\r\n");
