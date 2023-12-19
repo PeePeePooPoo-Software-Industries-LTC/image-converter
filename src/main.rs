@@ -60,7 +60,10 @@ fn main() {
     	.set_title("Select a save location")
     	.save_file() else { panic!("No save location selected.") };
 
-    let mut all_content = String::new();
+    let mut c_file_content = String::from("// AUTO-GENERATED C FILE CONTENT\r\n");
+    let mut h_file_content = String::from("// AUTO-GENERATED HEADER FILE CONTENT\r\n");
+    h_file_content += "#ifndef __IMAGES_H_FILE__\r\n";
+    h_file_content += "#define __IMAGES_H_FILE__\r\n";
     for file in files {
         // That's gotta be the worst rust code I've ever seen
         // So it would seem
@@ -77,9 +80,6 @@ fn main() {
         let Ok(file_reader) = raw_reader.with_guessed_format() else { panic!("Invalid file format") };
         let Ok(decoded) = file_reader.decode() else { panic!("Invalid file format") };
         let rgb = decoded.into_rgb8();
-
-        // Basic note
-        all_content += &format!("\n// AUTO-GENERATED IMAGE CONVERTED FROM: {}\n", file_name);
 
         const WINDOW_SIZE: usize = 4;
         let mut color_palette: [Option<u32>; OPT_MAX_COLORS] = [None; OPT_MAX_COLORS];
@@ -186,17 +186,25 @@ fn main() {
         // Convert the image data into a C array
         let (w, h) = rgb.dimensions();
         let image_len = image_data.len();
-        all_content += &format!("#define IMAGE_{file_stem}_MAX_BYTES = {image_len};\r\n");
-        all_content += &format!("unsigned char image_{file_stem}_width = {w};\r\n");
-        all_content += &format!("unsigned char image_{file_stem}_height = {h};\r\n");
+
+        // Header note
+        h_file_content += &format!("\n// AUTO-GENERATED IMAGE CONVERTED FROM: {}\n", file_name);
+        h_file_content += &format!("#define IMAGE_{file_stem}_MAX_BYTES = {image_len};\r\n");
+        h_file_content += &format!("extern unsigned char image_{file_stem}_width;\r\n");
+        h_file_content += &format!("extern unsigned char image_{file_stem}_height;\r\n");
+        h_file_content += &format!("extern unsigned int image_{file_stem}_palette[8];\r\n");
+        h_file_content += &format!("extern unsigned char image_{file_stem}[IMAGE_{file_stem}_MAX_BYTES];\r\n");
+
+        c_file_content += &format!("\n// AUTO-GENERATED IMAGE CONVERTED FROM: {}\n", file_name);
+        c_file_content += &format!("unsigned char image_{file_stem}_width = {w};\r\n");
+        c_file_content += &format!("unsigned char image_{file_stem}_height = {h};\r\n");
         let palette_series = color_palette.into_iter().fold(String::new(), |str, color| {
             match color {
                 Some(color) => format!("{str}0x{color:08x}, "),
                 None => format!("{str}0x00000000, "),
             }
         });
-        all_content += &format!("unsigned int image_{file_stem}_palette[8] = {{\r\n\t{palette_series}\r\n}};\r\n");
-        all_content += &format!("unsigned char image_{file_stem}[IMAGE_{file_stem}_MAX_BYTES] = {{\r\n\t");
+        c_file_content += &format!("unsigned int image_{file_stem}_palette[8] = {{\r\n\t{palette_series}\r\n}};\r\n");
         let byte_series = image_data.into_iter().enumerate().fold(String::new(), |mut str, (index, byte)| {
             str += &format!(
                 "0x{:02x},{}",
@@ -205,20 +213,20 @@ fn main() {
             );
             str
         });
-        all_content += &format!("{byte_series}\r\n}};\r\n\r\n");
+        c_file_content += &format!("unsigned char image_{file_stem}[IMAGE_{file_stem}_MAX_BYTES] = {{\r\n\t{byte_series}\r\n}};\r\n\r\n");
     }
+    h_file_content += "#endif\r\n";
 
-    match std::fs::write(&output, &all_content) {
+    match std::fs::write(&output, format!("{h_file_content}{c_file_content}")) {
         Ok(_) => {
             println!("Saved succesfully to {:?}", &output);
-            // let _ = stdin().read(&mut [0u8]).unwrap();
         }
         Err(_) => {
             println!(
                 "Failed to save. Resorting to outputting to console (press something to continue)"
             );
             let _ = stdin().read(&mut [0u8]).unwrap();
-            println!("{}", &all_content);
+            println!("{}\r\n{}", &h_file_content, &c_file_content);
             let _ = stdin().read(&mut [0u8]).unwrap();
         }
     };
