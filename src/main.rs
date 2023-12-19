@@ -16,7 +16,9 @@ const RANGE_COL_OFFSET: u8 = 0;
 const RANGE_RANGE_OFFSET: u8 = 3;
 
 fn convert_to_10bit_rgb(r: u8, g: u8, b: u8) -> u32 {
-    (((r << 2) as u32) << 20) | (((g << 2) as u32) << 10) | (b as u32)
+    ((r as f32 / 255. * 1023.) as u32) << 20
+        | ((g as f32 / 255. * 1023.) as u32) << 10
+        | ((b as f32 / 255. * 1023.) as u32)
 }
 
 #[derive(Clone, Copy)]
