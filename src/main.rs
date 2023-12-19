@@ -195,26 +195,38 @@ fn main() {
         h_file_content += &format!("extern unsigned char image_{file_stem}_width;\r\n");
         h_file_content += &format!("extern unsigned char image_{file_stem}_height;\r\n");
         h_file_content += &format!("extern unsigned int image_{file_stem}_palette[8];\r\n");
-        h_file_content += &format!("extern unsigned char image_{file_stem}[IMAGE_{file_stem}_MAX_BYTES];\r\n");
+        h_file_content +=
+            &format!("extern unsigned char image_{file_stem}[IMAGE_{file_stem}_MAX_BYTES];\r\n");
 
         c_file_content += &format!("\n// AUTO-GENERATED IMAGE CONVERTED FROM: {}\n", file_name);
         c_file_content += &format!("unsigned char image_{file_stem}_width = {w};\r\n");
         c_file_content += &format!("unsigned char image_{file_stem}_height = {h};\r\n");
-        let palette_series = color_palette.into_iter().fold(String::new(), |str, color| {
-            match color {
-                Some(color) => format!("{str}0x{color:08x}, "),
-                None => format!("{str}0x00000000, "),
-            }
-        });
-        c_file_content += &format!("unsigned int image_{file_stem}_palette[8] = {{\r\n\t{palette_series}\r\n}};\r\n");
-        let byte_series = image_data.into_iter().enumerate().fold(String::new(), |mut str, (index, byte)| {
-            str += &format!(
-                "0x{:02x},{}",
-                byte,
-                if index as u32 % 10 == 0 && index > 0 { "\r\n\t" } else { " " }
-            );
-            str
-        });
+        let palette_series =
+            color_palette
+                .into_iter()
+                .fold(String::new(), |str, color| match color {
+                    Some(color) => format!("{str}0x{color:08x}, "),
+                    None => format!("{str}0x00000000, "),
+                });
+        c_file_content += &format!(
+            "unsigned int image_{file_stem}_palette[8] = {{\r\n\t{palette_series}\r\n}};\r\n"
+        );
+        let byte_series =
+            image_data
+                .into_iter()
+                .enumerate()
+                .fold(String::new(), |mut str, (index, byte)| {
+                    str += &format!(
+                        "0x{:02x},{}",
+                        byte,
+                        if index as u32 % 10 == 0 && index > 0 {
+                            "\r\n\t"
+                        } else {
+                            " "
+                        }
+                    );
+                    str
+                });
         c_file_content += &format!("unsigned char image_{file_stem}[IMAGE_{file_stem}_MAX_BYTES] = {{\r\n\t{byte_series}\r\n}};\r\n\r\n");
     }
     h_file_content += "#endif\r\n";
